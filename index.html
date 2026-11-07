@@ -48,6 +48,24 @@ h1{font:700 22px Georgia,"Times New Roman",serif;margin:0;letter-spacing:.2px}
 .div{width:1px;align-self:stretch;background:var(--line);flex:none}
 #pgl{min-width:70px}
 #toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:20px;z-index:30;font-size:14px}
+#stage{position:relative}
+#pages.h{flex-direction:row;align-items:flex-start;padding:10px 8px 120px}
+#pages.h .pg{flex:none;scroll-snap-align:center}
+#stage.h{scroll-snap-type:x mandatory}
+#pages.t{flex-direction:row;flex-wrap:wrap;justify-content:center;align-items:flex-start}
+#side{position:absolute;left:0;top:0;bottom:0;width:min(330px,88%);background:var(--panel);border-right:1px solid var(--line);z-index:10;display:flex;flex-direction:column;box-shadow:4px 0 18px rgba(0,0,0,.3)}
+#tabs{display:flex}
+#tabs button{flex:1;border-radius:0;border:0;border-bottom:2px solid var(--line)}
+#tabs button[aria-pressed="true"]{border-color:var(--acc);color:var(--acc);font-weight:700}
+.pane{flex:1;overflow:auto;padding:10px}
+.th{display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:10px;cursor:pointer;padding:6px;border-radius:8px;border:2px solid transparent}
+.th.on{border-color:var(--acc);background:var(--sel)}
+.th.bk small::after{content:" ★";color:var(--acc)}
+.th canvas{background:#fff;width:120px;height:170px;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.li{display:flex;gap:6px;align-items:center;padding:8px;border-bottom:1px solid var(--line);cursor:pointer}
+.li span{flex:1;font-size:14px}.li small{color:var(--mute)}
+.li button{min-height:34px;padding:2px 8px}
+.sh{position:absolute;background:rgba(255,190,0,.45);pointer-events:none;border-radius:2px}
 </style>
 </head>
 <body>
@@ -58,14 +76,17 @@ h1{font:700 22px Georgia,"Times New Roman",serif;margin:0;letter-spacing:.2px}
   <input type="file" id="fi" accept="application/pdf,.pdf" multiple hidden>
 </section>
 <section class="view" id="rd" hidden>
-  <header><button id="bk" aria-label="Back to library">‹ Library</button><b id="title" style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis"></b><span class="sp"></span><button id="pgl" aria-label="Go to page">–</button></header>
+  <header><button id="bk" aria-label="Back to library">‹</button><b id="title" style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis"></b><span class="sp"></span><button id="sb" aria-label="Pages, bookmarks and search">☰</button><button id="bm" aria-label="Bookmark this page">☆</button><button id="vm" aria-label="Change page layout">↕</button><button id="pgl" aria-label="Go to page">–</button></header>
+  <aside id="side" hidden><div id="tabs"><button data-p="th" aria-pressed="true">Pages</button><button data-p="bm" aria-pressed="false">Bookmarks</button><button data-p="se" aria-pressed="false">Search</button></div>
+  <div class="pane" id="p-th"></div><div class="pane" id="p-bm" hidden></div>
+  <div class="pane" id="p-se" hidden><div class="row" style="margin-bottom:8px"><input id="q" placeholder="Search this PDF" style="flex:1;min-width:0"><button id="qg" class="pri">Go</button></div><div id="qs" style="color:var(--mute);font-size:14px;margin-bottom:6px"></div><div id="qr"></div></div></aside>
   <div id="stage"><div id="pages"></div></div>
   <div id="bar" role="toolbar" aria-label="Annotation tools">
     <button data-t="hand">Move</button><button data-t="pen">Pen</button><button data-t="hl">Marker</button><button data-t="eraser">Erase</button>
     <span class="div"></span><span id="sws" style="display:flex;gap:8px;align-items:center"></span>
     <button id="sz">Size</button><button id="un">Undo</button>
     <span class="div"></span><button id="zo" aria-label="Zoom out">−</button><button id="zi" aria-label="Zoom in">+</button>
-    <button id="po" aria-pressed="false">Pen only</button>
+    <button id="pv">Prev</button><button id="nx">Next</button><button id="po" aria-pressed="false">Pen only</button>
   </div>
 </section>
 <div id="modal" hidden></div>
@@ -150,13 +171,14 @@ async function openFile(n){
     ann=(await tx('ann','readonly',o=>o.get(n.id)))||{};
     pdf=await pdfjsLib.getDocument({data:await blob.arrayBuffer()}).promise;
     $('#lib').hidden=true;$('#rd').hidden=false;$('#title').textContent=n.name;
-    setTool(tool);await build(n.last||1);
+    setTool(tool);buildSide();$('#side').hidden=true;await build(n.last||1);
   }catch(e){toast('Could not open this PDF');$('#lib').hidden=false;$('#rd').hidden=true}
 }
 async function build(goto){
   const gen=++G,box=$('#pages');box.innerHTML='';
   obsR&&obsR.disconnect();obsP&&obsP.disconnect();
-  const st=$('#stage'),w=Math.max(200,(st.clientWidth-16)*zoom);
+  const st=$('#stage'),m=(cur&&cur.vm)||'v',cols=m==='t'?2:1,w=Math.max(120,((st.clientWidth-16-(cols-1)*10)/cols)*zoom);
+  box.className=m==='v'?'':m;st.className=m==='h'?'h':'';box.style.width=m==='t'?(cols*w+(cols-1)*10+16)+'px':'';$('#vm').textContent={v:'↕',h:'↔',t:'◫'}[m];
   const p1=await pdf.getPage(1),v=p1.getViewport({scale:1}),h=w*v.height/v.width;
   obsR=new IntersectionObserver(es=>es.forEach(en=>{if(en.isIntersecting&&!en.target.dataset.done)renderPage(en.target,gen)}),{root:st,rootMargin:'800px 0px'});
   obsP=new IntersectionObserver(es=>es.forEach(en=>{if(en.intersectionRatio>=.4){setPage(+en.target.dataset.i)}}),{root:st,threshold:[.4]});
@@ -164,7 +186,7 @@ async function build(goto){
     const d=document.createElement('div');d.className='pg';d.dataset.i=i;d.style.width=w+'px';d.style.height=h+'px';
     d.innerHTML='<canvas class="pdf"></canvas><canvas class="ink"></canvas>';box.appendChild(d);obsR.observe(d);obsP.observe(d);
   }
-  if(goto>1){const t=box.children[goto-1];if(t)st.scrollTop=t.offsetTop-10}
+  if(goto>1)jump(goto,true);
   setPage(goto);
 }
 async function renderPage(el,gen){
@@ -175,14 +197,14 @@ async function renderPage(el,gen){
     const c=el.querySelector('.pdf'),k=el.querySelector('.ink');
     c.width=k.width=v.width;c.height=k.height=v.height;el.style.height=v0.height*s+'px';
     await pg.render({canvasContext:c.getContext('2d'),viewport:v}).promise;
-    if(gen===G)drawInk(el);
+    if(gen===G){drawInk(el);mark(el)}
   }catch(e){el.dataset.done=''}
 }
 function setPage(i){
-  $('#pgl').textContent=i+' / '+pdf.numPages;
+  $('#pgl').textContent=i+' / '+pdf.numPages;if(cur)sync(i);
   if(cur&&cur.last!==i){cur.last=i;clearTimeout(lastT);lastT=setTimeout(()=>put(cur).catch(()=>{}),800)}
 }
-$('#pgl').onclick=async()=>{const v=parseInt(await ask('Go to page',cur.last,'Go'),10);if(v>0&&v<=pdf.numPages){const t=$('#pages').children[v-1];$('#stage').scrollTop=t.offsetTop-10}};
+$('#pgl').onclick=async()=>{const v=parseInt(await ask('Go to page',cur.last,'Go'),10);if(v>0&&v<=pdf.numPages)jump(v)};
 
 /* ---------- ink ---------- */
 function stroke(x,s,W){
@@ -247,6 +269,96 @@ $('#bk').onclick=async()=>{flush();await put(cur).catch(()=>{});G++;if(pdf){pdf.
 let rt;addEventListener('resize',()=>{if(!pdf)return;clearTimeout(rt);rt=setTimeout(()=>build(cur.last||1),300)});
 addEventListener('pagehide',flush);
 
+/* ---------- layouts, panel, bookmarks, search ---------- */
+let txt=null,sq='',thO;
+const bmHas=i=>(cur.bm||[]).some(b=>b.p===i);
+const narrow=()=>{if(innerWidth<700)$('#side').hidden=true};
+function jump(i,now){
+  const t=$('#pages').children[i-1],st=$('#stage');if(!t)return;const b=now?'auto':'smooth';
+  if(cur.vm==='h')st.scrollTo({left:t.offsetLeft-(st.clientWidth-t.offsetWidth)/2,behavior:b});
+  else st.scrollTo({top:t.offsetTop-10,behavior:b});
+}
+function sync(i){
+  $('#bm').textContent=bmHas(i)?'★':'☆';
+  $$('.th').forEach(t=>t.classList.toggle('on',+t.dataset.i===i));
+  const t=$('.th.on');if(t&&!$('#side').hidden&&!$('#p-th').hidden)t.scrollIntoView({block:'nearest'});
+}
+function buildSide(){
+  txt=null;sq='';$('#q').value='';$('#qs').textContent='';$('#qr').innerHTML='';
+  thO&&thO.disconnect();const l=$('#p-th');l.innerHTML='';
+  thO=new IntersectionObserver(es=>es.forEach(en=>{if(en.isIntersecting&&!en.target.dataset.d){en.target.dataset.d=1;thumb(en.target)}}),{root:l,rootMargin:'400px 0px'});
+  for(let i=1;i<=pdf.numPages;i++){const d=document.createElement('div');d.className='th';d.dataset.i=i;d.innerHTML='<canvas></canvas><small>'+i+'</small>';l.appendChild(d);thO.observe(d)}
+  bmList();
+}
+async function thumb(d){
+  try{const pg=await pdf.getPage(+d.dataset.i),v0=pg.getViewport({scale:1}),v=pg.getViewport({scale:240/v0.width}),c=d.querySelector('canvas');
+  c.width=v.width;c.height=v.height;c.style.height=(120*v0.height/v0.width)+'px';
+  await pg.render({canvasContext:c.getContext('2d'),viewport:v}).promise}catch(e){}
+}
+$('#p-th').onclick=e=>{const t=e.target.closest('.th');if(t){jump(+t.dataset.i);narrow()}};
+function bmList(){
+  const b=(cur.bm||[]).slice().sort((x,y)=>x.p-y.p),l=$('#p-bm');
+  l.innerHTML=b.length?b.map(x=>`<div class="li" data-p="${x.p}"><span>${esc(x.l)} <small>p. ${x.p}</small></span><button data-r="${x.p}" aria-label="Rename bookmark">✎</button><button data-x="${x.p}" aria-label="Remove bookmark">✕</button></div>`).join(''):'<p style="color:var(--mute)">No bookmarks yet. Tap ☆ at the top to bookmark the page you’re on.</p>';
+  $$('.th').forEach(t=>t.classList.toggle('bk',bmHas(+t.dataset.i)));
+}
+$('#bm').onclick=()=>{
+  const i=cur.last||1;cur.bm=cur.bm||[];const k=cur.bm.findIndex(b=>b.p===i);
+  if(k>=0)cur.bm.splice(k,1);else cur.bm.push({p:i,l:'Page '+i});
+  put(cur).catch(()=>{});bmList();sync(i);
+};
+$('#p-bm').onclick=async e=>{
+  const x=e.target.closest('[data-x]'),r=e.target.closest('[data-r]'),li=e.target.closest('.li');
+  if(x)cur.bm=cur.bm.filter(b=>b.p!==+x.dataset.x);
+  else if(r){const b=cur.bm.find(b=>b.p===+r.dataset.r),v=await ask('Rename bookmark',b.l);if(v)b.l=v}
+  else if(li){jump(+li.dataset.p);narrow();return}
+  else return;
+  put(cur).catch(()=>{});bmList();sync(cur.last||1);
+};
+$('#sb').onclick=()=>{const s=$('#side');s.hidden=!s.hidden;if(!s.hidden)sync(cur.last||1)};
+$('#tabs').onclick=e=>{
+  const b=e.target.closest('[data-p]');if(!b)return;
+  $$('#tabs button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  ['th','bm','se'].forEach(k=>$('#p-'+k).hidden=k!==b.dataset.p);if(b.dataset.p==='se')$('#q').focus();
+};
+$('#vm').onclick=()=>{
+  const o=['v','h','t'],n=o[(o.indexOf(cur.vm||'v')+1)%3];cur.vm=n;put(cur).catch(()=>{});
+  toast({v:'Vertical scroll',h:'Swipe page by page',t:'Two pages side by side'}[n]);build(cur.last||1);
+};
+const step=()=>cur.vm==='t'?2:1;
+$('#nx').onclick=()=>jump(Math.min(pdf.numPages,(cur.last||1)+step()));
+$('#pv').onclick=()=>jump(Math.max(1,(cur.last||1)-step()));
+async function index(){
+  if(txt)return;const my=cur,a=[];
+  for(let i=1;i<=pdf.numPages;i++){
+    $('#qs').textContent='Reading pages… '+i+' / '+pdf.numPages;
+    const c=await (await pdf.getPage(i)).getTextContent();a.push(c.items.map(t=>t.str).join(' '));
+  }
+  if(cur===my)txt=a;
+}
+async function search(){
+  const q=$('#q').value.trim().toLowerCase();sq=q;$$('.sh').forEach(e=>e.remove());
+  if(!q){$('#qs').textContent='';$('#qr').innerHTML='';return}
+  try{await index()}catch(e){txt=null;return toast('Could not read the text of this PDF')}
+  if(!txt||sq!==q)return;
+  const out=[];
+  txt.forEach((t,i)=>{const L=t.toLowerCase();let k=0,n=0;while(n<4&&(k=L.indexOf(q,k))>=0){out.push({p:i+1,s:t.slice(Math.max(0,k-35),k+q.length+45)});k+=q.length;n++}});
+  $('#qs').textContent=out.length?out.length+' result'+(out.length>1?'s':'')+' (up to 4 shown per page)':'No matches. Scanned PDFs have no text to search.';
+  $('#qr').innerHTML=out.slice(0,300).map(r=>`<div class="li" data-p="${r.p}"><span>…${esc(r.s)}… <small>p. ${r.p}</small></span></div>`).join('');
+  $$('.pg[data-done="1"]').forEach(mark);
+}
+$('#qg').onclick=search;$('#q').onkeydown=e=>{if(e.key==='Enter')search()};
+$('#qr').onclick=e=>{const li=e.target.closest('.li');if(li){jump(+li.dataset.p);narrow()}};
+async function mark(el){
+  el.querySelectorAll('.sh').forEach(e=>e.remove());if(!sq||!pdf)return;
+  try{
+    const pg=await pdf.getPage(+el.dataset.i),c=await pg.getTextContent(),s=el.clientWidth/pg.getViewport({scale:1}).width,v=pg.getViewport({scale:s});
+    el.querySelectorAll('.sh').forEach(e=>e.remove());
+    c.items.forEach(t=>{const L=t.str.toLowerCase();let k=L.indexOf(sq);
+      while(k>=0&&L.length){const m=pdfjsLib.Util.transform(v.transform,t.transform),h=t.height*s,w=t.width*s,d=document.createElement('div');
+        d.className='sh';d.style.cssText=`left:${m[4]+w*k/L.length}px;top:${m[5]-h}px;width:${Math.max(4,w*sq.length/L.length)}px;height:${h*1.15}px`;
+        el.appendChild(d);k=L.indexOf(sq,k+sq.length)}});
+  }catch(e){}
+}
 /* ---------- start ---------- */
 (async()=>{
   try{db=await openDB();nodes=await tx('nodes','readonly',o=>o.getAll());navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}
